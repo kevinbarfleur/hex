@@ -202,6 +202,7 @@ const DOUBLE_TAP_WINDOW_MS: u32 = crate::dictation::DOUBLE_TAP_WINDOW.as_millis(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HotkeyAction {
     Start,
+    ToggleChat,
     Finish,
     Cancel,
     PasteLast,
@@ -279,6 +280,7 @@ struct CallbackState {
     /// a binding with a key has always seen (`ModifierState::holds`).
     raw_modifiers: ModifierState,
     side_down: SideDownTimes,
+    chat_gesture: chat_gesture::DoubleControl,
     trigger_down: bool,
     paste_trigger_down: bool,
     double_tap_enabled: bool,
@@ -311,6 +313,7 @@ struct CaptureState {
     flavour: DictationFlavour,
 }
 
+mod chat_gesture;
 mod commands;
 mod hold_through;
 
@@ -619,6 +622,7 @@ impl WindowsHotkeyMonitor {
             modifiers: ModifierState::default(),
             raw_modifiers: ModifierState::default(),
             side_down: SideDownTimes::default(),
+            chat_gesture: Default::default(),
             trigger_down: false,
             paste_trigger_down: false,
             double_tap_enabled,
@@ -979,6 +983,7 @@ fn process_button(
             // chord state and matching, and still reaches the app in front,
             // where it makes AltGr type.
             if left_control == LeftControl::AltGr {
+                state.chat_gesture = Default::default();
                 return Handled::PASS;
             }
             // The hook never sees a release that lands on another desktop,
@@ -999,7 +1004,19 @@ fn process_button(
             // capture can observe every key through GetAsyncKeyState.
             if CAPTURE_INHIBIT.load(Ordering::Relaxed) {
                 state.mask_release = false;
+                state.chat_gesture = Default::default();
                 return Handled::PASS;
+            }
+            let m = state.raw_modifiers;
+            let chord = m.left_shift
+                || m.right_shift
+                || m.left_alt
+                || m.right_alt
+                || m.left_windows
+                || m.right_windows
+                || (m.left_control && m.right_control);
+            if state.chat_gesture.event(vk, is_down, time, chord) {
+                send_event(state, HotkeyAction::ToggleChat, time);
             }
             if !modifier_event && is_down {
                 state.mask_release = false;
@@ -1550,6 +1567,7 @@ mod tests {
             modifiers: ModifierState::default(),
             raw_modifiers: ModifierState::default(),
             side_down: SideDownTimes::default(),
+            chat_gesture: Default::default(),
             trigger_down: false,
             paste_trigger_down: false,
             double_tap_enabled: false,

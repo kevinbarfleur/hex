@@ -263,14 +263,14 @@ impl WindowsPaster {
 
     /// Pastes `text`, with Ctrl+Shift+V when `shift` asks for it or the
     /// saved Terminal paste setting is on. Java games still take Ctrl+V.
-    /// `return_to` is the window the capture started in: the desktop or a
+    /// `destination.return_to` is the window the capture started in: the desktop or a
     /// taskbar takes no paste, so Hex returns there first and, when it can't,
     /// leaves the transcript on the clipboard instead of sending it nowhere.
     pub fn paste(
         &mut self,
         text: &str,
         shift: bool,
-        return_to: Option<CaptureWindow>,
+        destination: super::chat_target::Destination,
     ) -> Result<Paste> {
         if text.trim().is_empty() {
             return Err(eyre!("refusing to paste an empty transcript"));
@@ -304,7 +304,9 @@ impl WindowsPaster {
         // leaves the plain transcript, while a paste carries the
         // continuation's join.
         let mut target = Foreground::read();
-        let returned = target.is_shell() && return_to.is_some_and(bring_to_front);
+        let returned = destination.chat.is_none()
+            && target.is_shell()
+            && destination.return_to.is_some_and(bring_to_front);
         if returned {
             target = Foreground::read();
         }
@@ -378,6 +380,12 @@ impl WindowsPaster {
             target.application.as_deref(),
             shift_paste(shift, self.paste_with_shift.load(Ordering::Relaxed)),
         );
+        // A different field (even in the same browser), a closed picker, or a
+        // new binding must never receive this chat draft.
+        if destination.chat.is_some_and(|chat| !chat.is_focused()) {
+            self.copy_only(plain)?;
+            return Ok(Paste::Copied);
+        }
         if let Err(error) = send_paste_shortcut(shift) {
             if let Some(generation) = generation {
                 restore_clipboard_generation(&self.clipboard_restore, generation);

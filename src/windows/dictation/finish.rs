@@ -17,7 +17,7 @@ pub(super) fn submit_capture(
     by_shortcut: bool,
     context: crate::windows::context::PendingContext,
     stop_phrase: Option<String>,
-    return_to: Option<crate::windows::paste::CaptureWindow>,
+    destination: crate::windows::chat_target::Destination,
 ) -> Result<bool> {
     let mut submitted = false;
     let no_speech = |print: Option<PrintReply>| {
@@ -53,7 +53,7 @@ pub(super) fn submit_capture(
                 flavour,
                 by_shortcut,
                 stop_phrase,
-                return_to,
+                destination,
             }));
             match jobs.try_send(job) {
                 Ok(()) => {

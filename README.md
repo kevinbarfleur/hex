@@ -3,6 +3,8 @@
 Hex is local voice dictation for Mac, Windows and Linux. Hold a key, speak, and
 it pastes.
 
+Ce fork ajoute le [ciblage du chat Twitch sur Windows](native/windows-chat/README.md). Double Ctrl dicte dans Twitch, ou dans l’application active si le chat est introuvable. Ctrl + Espace garde la dictée habituelle.
+
 ## How it works
 
 - hold the shortcut, speak, then let go

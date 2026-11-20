@@ -78,7 +78,7 @@ struct Job {
     stop_phrase: Option<String>,
     /// The window in front when the capture started, where a paste returns
     /// when the desktop or a taskbar is in front instead.
-    return_to: Option<crate::windows::paste::CaptureWindow>,
+    destination: crate::windows::chat_target::Destination,
 }
 
 /// A release whose capture is still collecting its post-release tail.
@@ -92,7 +92,7 @@ struct Finishing {
     /// Labs › Stop phrase: the words that ended this capture, when they did.
     stop_phrase: Option<String>,
     /// The window in front when the capture started.
-    return_to: Option<crate::windows::paste::CaptureWindow>,
+    destination: crate::windows::chat_target::Destination,
 }
 
 enum OutputJob {
@@ -361,9 +361,10 @@ pub fn run(
     let mut recording = false;
     let mut recording_flavour = crate::dictation::DictationFlavour::Normal;
     let mut recording_by_shortcut = false;
+    let mut recording_by_chat_gesture = false;
     // The window in front when this capture started, where its paste returns
     // if the desktop or a taskbar is in front instead.
-    let mut recording_return_to = None;
+    let mut recording_destination = Default::default();
     let mut recording_feedback_started = false;
     // Whether this capture's start tone already played on its press.
     let mut start_tone_played = false;
@@ -559,7 +560,7 @@ pub fn run(
                 flavour,
                 by_shortcut,
                 stop_phrase,
-                return_to,
+                destination,
             }) = finishing.take()
             else {
                 unreachable!("checked above");
@@ -577,7 +578,7 @@ pub fn run(
                 by_shortcut,
                 context,
                 stop_phrase,
-                return_to,
+                destination,
             )?;
             if submitted {
                 next_job_id += 1;
@@ -682,6 +683,20 @@ pub fn run(
                 &mut print,
             )
         {
+            let chat_gesture = matches!(action, HotkeyAction::ToggleChat);
+            let (action, deliberate, flavour) = if chat_gesture {
+                let action = if recording || start_pending {
+                    if !recording_by_chat_gesture {
+                        continue;
+                    }
+                    HotkeyAction::Finish
+                } else {
+                    HotkeyAction::Start
+                };
+                (action, true, crate::dictation::DictationFlavour::Normal)
+            } else {
+                (action, deliberate, flavour)
+            };
             // Labs › Stop phrase: only the finish its words ended keeps them;
             // any other action leaves them for that finish.
             let finish_phrase = if matches!(action, HotkeyAction::Finish) {
@@ -723,10 +738,8 @@ pub fn run(
                     if !recording && (audio_ready || (release_while_idle && !start_pending)) =>
                 {
                     recording_flavour = flavour;
-                    recording_by_shortcut = !deliberate;
-                    // The window in front now, where a paste returns if the
-                    // desktop or a taskbar is in front when it is sent.
-                    recording_return_to = crate::windows::paste::CaptureWindow::read();
+                    recording_by_chat_gesture = chat_gesture;
+                    recording_by_shortcut = !deliberate || chat_gesture;
                     // Labs › Stop phrase: a new capture listens for the
                     // phrase from its own words.
                     stop_phrase = crate::dictation::stop_phrase::Detector::new();
@@ -766,6 +779,10 @@ pub fn run(
                     }
                     events.dictation(DictationPhase::Started, "")?;
                     emit_state(&mut events, VoiceState::Dictating, &device_label)?;
+                    // Audio is already running (or opening) while the picker
+                    // checks the chat field. The normal shortcut owns capture.
+                    recording_destination =
+                        crate::windows::chat_target::Destination::begin(chat_gesture);
                 }
                 HotkeyAction::Finish | HotkeyAction::Cancel if start_pending => {
                     if deliberate {
@@ -826,7 +843,7 @@ pub fn run(
                         // Labs › Stop phrase: the phrase's own finish carries
                         // its words, which the job removes.
                         stop_phrase: finish_phrase,
-                        return_to: recording_return_to,
+                        destination: recording_destination,
                         context: if capture.would_transcribe(occurred_at) {
                             crate::windows::context::begin_capture(
                                 !recording_flavour.raw()

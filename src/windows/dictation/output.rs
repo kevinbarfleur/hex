@@ -80,17 +80,18 @@ pub(super) fn process_dictation_job(
         if !printed {
             let paster = paster.as_mut().map_err(|error| format!("{error:#}"))?;
             // Labs › YOLO mode, read as the output commits.
-            let sends = job.by_shortcut
+            let sends = job.destination.chat.is_none()
+                && job.by_shortcut
                 && !job.flavour.raw()
                 && crate::dictation::yolo_mode::sends(application.as_deref(), None);
             // Labs › Copy dictation only, read as the output commits:
             // dictations go to the clipboard unpasted; Paste Last still pastes.
             // A dictation YOLO mode sends is pasted anyway.
-            let copy_only = crate::labs::copy_only() && !sends;
+            let copy_only = job.destination.chat.is_none() && crate::labs::copy_only() && !sends;
             let pasted = if copy_only {
                 paster.copy_only(&text).map(|()| Paste::Copied)
             } else {
-                paster.paste(&text, job.flavour.terminal_paste(), job.return_to)
+                paster.paste(&text, job.flavour.terminal_paste(), job.destination)
             };
             sent = matches!(pasted, Ok(Paste::Sent)) && sends;
             let pasted = if sent {
@@ -164,7 +165,7 @@ pub(super) fn process_paste_last(
             let paste = paster
                 .as_mut()
                 .map_err(|error| format!("{error:#}"))?
-                .paste(&text, false, None)
+                .paste(&text, false, Default::default())
                 .map_err(|error| format!("{error:#}"))?;
             copied = paste == Paste::Copied;
             Ok(text)
