@@ -3,6 +3,7 @@ a prepared disposable Hex profile with a model, and a WAV of spoken words.
 Close Hex before running. The test briefly takes foreground keyboard focus.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import ctypes
 from ctypes import wintypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -67,6 +68,12 @@ def main():
     user.SendMessageW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
     user.SendMessageW.restype = wintypes.LPARAM
     enum_callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+    user.GetAncestor.restype = wintypes.HWND
+
+    def foreground():
+        return user.GetAncestor(user.GetForegroundWindow(), 2)
+
     game = tk.Tk()
     game.title(title + "-Source")
     field = tk.Entry(game)
@@ -98,13 +105,29 @@ def main():
         return next(iter(matches), None)
 
     def activate(hwnd):
-        if user.GetForegroundWindow() != hwnd:
+        if foreground() != hwnd:
             # Give the test driver foreground permission before moving focus
             # between its own two windows.
             user.keybd_event(0x12, 0, 0, 0)
             user.keybd_event(0x12, 0, 2, 0)
             user.SetForegroundWindow(hwnd)
-        wait(lambda: user.GetForegroundWindow() == hwnd, "The test window could not be activated")
+        if foreground() != hwnd:
+            # The shell can own foreground permission during browser first-run.
+            # Use only this test window's hit-tested caption to activate it.
+            rect = wintypes.RECT()
+            user.GetWindowRect(hwnd, ctypes.byref(rect))
+            user.WindowFromPoint.argtypes = (wintypes.POINT,)
+            user.WindowFromPoint.restype = wintypes.HWND
+            previous = wintypes.POINT()
+            user.GetCursorPos(ctypes.byref(previous))
+            point = wintypes.POINT((rect.left + rect.right) // 2, rect.top + 12)
+            if user.GetAncestor(user.WindowFromPoint(point), 2) == hwnd:
+                user.SetCursorPos(point.x, point.y)
+                user.mouse_event(2, 0, 0, 0, 0)
+                user.mouse_event(4, 0, 0, 0, 0)
+                time.sleep(.10)
+                user.SetCursorPos(previous.x, previous.y)
+        wait(lambda: foreground() == hwnd, "The test window could not be activated")
 
     def keys(sequence, down):
         for key in sequence:
@@ -117,13 +140,16 @@ def main():
         user.GetWindowThreadProcessId(picker, ctypes.byref(pid))
         user.AllowSetForegroundWindow(pid)
         expiry = (ctypes.windll.kernel32.GetTickCount() + 900) & 0xffffffff
-        return user.SendMessageW(picker, 0x8000 + 51, source, expiry)
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            result = worker.submit(user.SendMessageW, picker, 0x8000 + 51, source, expiry)
+            wait(result.done, "Picker timed out", 2)
+            return result.result()
 
     def dictate(expected):
-        assert user.GetForegroundWindow() == source
+        assert foreground() == source
         keys((0x11, 0x20), True)
         try:
-            wait(lambda: user.GetForegroundWindow() == expected, "Wrong recording destination", 2)
+            wait(lambda: foreground() == expected, "Wrong recording destination", 2)
             end = time.monotonic() + 3
             while time.monotonic() < end:
                 game.update()
@@ -139,9 +165,9 @@ def main():
             time.sleep(.075)
 
     def dictate_to_chat(expected):
-        assert user.GetForegroundWindow() == source
+        assert foreground() == source
         double_control()
-        wait(lambda: user.GetForegroundWindow() == expected, "Wrong double-Control destination", 2)
+        wait(lambda: foreground() == expected, "Wrong double-Control destination", 2)
         end = time.monotonic() + 3
         while time.monotonic() < end:
             game.update()
@@ -165,7 +191,8 @@ def main():
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as browser_profile:
             browser = subprocess.Popen([args.browser, "--user-data-dir=" + browser_profile,
                                        "--no-first-run", "--no-default-browser-check", "--force-renderer-accessibility",
-                                       "--disable-background-timer-throttling",
+                                       "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",
+                                       "--disable-features=msEdgeFirstRunExperience",
                                        "--app=http://127.0.0.1:" + str(server.server_port)])
             chat = wait(browser_window, "Test browser unavailable", 20)
             activate(chat)
@@ -177,7 +204,7 @@ def main():
             wait(lambda: state["focus"] == "q", "Could not focus second field")
             activate(source)
             # Pin and verify our own fixture before injecting any speech.
-            assert focus_query() and user.GetForegroundWindow() == chat
+            assert focus_query() and foreground() == chat
             wait(lambda: state["focus"] == "d", "Wrong editor bound")
             commands.append(b"other")
             wait(lambda: state["focus"] == "q", "Could not move the caret")
@@ -185,23 +212,23 @@ def main():
             field.focus_set()
             dictate(source)
             wait(lambda: field.get().strip(), "Ctrl+Space failed while the chat was available", 40)
-            assert state["draft"] == "Draft: " and user.GetForegroundWindow() == source
+            assert state["draft"] == "Draft: " and foreground() == source
             field.delete(0, tk.END)
             time.sleep(.8)
             dictate_to_chat(chat)
             wait(lambda: len(state["draft"]) > len("Draft: "), "No chat transcript", 40)
             assert state["draft"].startswith("Draft:") and state["focus"] == "d"
             assert state["enters"] == 0 and not state["other"] and not field.get()
-            assert user.GetForegroundWindow() == chat
+            assert foreground() == chat
             user.PostMessageW(chat, 0x10, 0, 0)
             wait(lambda: not user.IsWindow(chat), "Test chat did not close")
             chat = None
             activate(source)
             field.focus_force()
-            assert focus_query() == 0 and user.GetForegroundWindow() == source
+            assert focus_query() == 0 and foreground() == source
             dictate_to_chat(source)
             wait(lambda: field.get().strip(), "No double-Control fallback after closing chat", 40)
-            assert user.GetForegroundWindow() == source
+            assert foreground() == source
             time.sleep(.8)  # Let Hex restore the previous clipboard before shutdown.
             print("Passed: ordinary Ctrl+Space, double-Control chat draft, retained focus, no Enter, double-Control fallback.")
     finally:

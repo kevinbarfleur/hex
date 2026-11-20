@@ -149,6 +149,7 @@ namespace HexChat
 
         internal bool TryFocus(IntPtr origin, int deadline)
         {
+            origin = GetAncestor(origin, 2);
             if (!SameWindow() || !Before(deadline) || Foreground() != origin) return false;
             bool moved = false;
             try
@@ -248,7 +249,11 @@ namespace HexChat
         { public int x, y; public uint data, flags, time; public UIntPtr extra; }
         [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
         [DllImport("user32.dll")] static extern uint SendInput(uint count, Input[] keys, int size);
-        [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")] internal static extern IntPtr Foreground();
+        // Edge can report its focused renderer child as the foreground HWND.
+        // Resolve both sides to the actual browser window, including at paste time.
+        internal static IntPtr Foreground() { return GetAncestor(GetForegroundWindow(), 2); }
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr window, uint flag);
         delegate bool EnumWindow(IntPtr window, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
