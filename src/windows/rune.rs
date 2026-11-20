@@ -178,6 +178,7 @@ pub fn open(event_path: PathBuf, shutdown: &'static AtomicBool, start_hidden: bo
     let Some(instance) = crate::windows::app::AppInstance::claim(start_hidden)? else {
         return Ok(());
     };
+    super::chat_target::start_picker();
     name_ui_thread();
     crate::labs::log_launch();
     shutdown.store(false, Ordering::Relaxed);
@@ -446,7 +447,7 @@ fn run_runtime(
             let view = tray_view_for(&published, dictation_audio);
             if tray_view.as_ref() != Some(&view) {
                 tray.set_tooltip(view.tooltip());
-                tray.set_menu(view.menu());
+                tray.set_menu(windows_menu(&view));
                 tray_view = Some(view);
             }
         }
@@ -903,6 +904,14 @@ fn taskbar_is_light() -> bool {
         .is_ok_and(|light| light != 0)
 }
 
+fn windows_menu(view: &TrayView) -> Vec<rune::TrayItem> {
+    let mut items = view.menu();
+    if super::chat_target::installed() {
+        items.insert(1, rune::TrayItem::action("twitch-chat", "Twitch…"));
+    }
+    items
+}
+
 fn create_tray(window: rune::AppHandle<Ui>) -> Result<rune::Tray> {
     let icon = rune::TrayIcon::rgba(
         tray_icon::SIZE,
@@ -912,10 +921,11 @@ fn create_tray(window: rune::AppHandle<Ui>) -> Result<rune::Tray> {
     let view = TrayView::default();
     let spec = rune::TraySpec::new("hex", "Hex", icon)
         .tooltip(view.tooltip())
-        .menu(view.menu());
+        .menu(windows_menu(&view));
     let tray = rune::Tray::new(spec, move |event| match event {
         // Left click shows the window; right click opens the menu.
         rune::TrayEvent::Activate { .. } => window.open(),
+        rune::TrayEvent::Menu(id) if id == "twitch-chat" => super::chat_target::show_menu(),
         rune::TrayEvent::Menu(id) => match TrayCommand::from_id(&id) {
             Some(TrayCommand::Show) => window.open(),
             Some(TrayCommand::Quit) => window.quit(),

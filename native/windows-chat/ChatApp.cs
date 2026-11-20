@@ -1,10 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -14,8 +12,8 @@ namespace HexChat
     // remembers the user's selection and answers two bounded focus queries.
     internal sealed class ChatApp : Form
     {
-        const int ActivateTarget = 0x8000 + 51, CheckTarget = 0x8000 + 52;
-        readonly NotifyIcon tray;
+        const int ActivateTarget = 0x8000 + 51, CheckTarget = 0x8000 + 52, ShowMenu = 0x8000 + 53;
+        const int HostExited = 0x8000 + 54;
         readonly ContextMenuStrip menu;
         readonly ToolStripMenuItem status, windowOnly;
         FocusTarget target;
@@ -33,7 +31,7 @@ namespace HexChat
             Text = "HexChat.Picker.v1";
             ShowInTaskbar = false;
             menu = new ContextMenuStrip();
-            status = new ToolStripMenuItem("Détection automatique de Twitch") { Enabled = false };
+            status = new ToolStripMenuItem(pinOnly ? "Aucun champ mémorisé" : "Détection automatique de Twitch") { Enabled = false };
             menu.Items.Add(status);
             menu.Items.Add("Aide", null, delegate { MessageBox.Show(HelpText, "Hex Chat"); });
             windowOnly = new ToolStripMenuItem("Mémoriser uniquement la fenêtre") { CheckOnClick = true };
@@ -41,42 +39,22 @@ namespace HexChat
             menu.Items.Add("Détection automatique de Twitch", null, delegate {
                 Forget(); pinned = false; Notice("Détection automatique de Twitch.");
             });
-            menu.Items.Add("Quitter le ciblage", null, delegate { Application.ExitThread(); });
-            tray = new NotifyIcon { Icon = SystemIcons.Information, Text = "Hex Chat — ciblage",
-                ContextMenuStrip = menu, Visible = true };
-            tray.DoubleClick += delegate { MessageBox.Show(HelpText, "Hex Chat"); };
+            menu.Items.Add("Désactiver le ciblage", null, delegate {
+                Forget(); pinned = true; Notice("Ciblage désactivé.");
+            });
             if (!RegisterHotKey(Handle, 1, 0x4003, (uint)Keys.F8))
-                throw new InvalidOperationException("Ctrl + Alt + F8 est déjà utilisé par une autre application.");
+                Notice("Ctrl + Alt + F8 est déjà utilisé. La détection automatique reste disponible.");
         }
 
         void Notice(string message)
         {
             status.Text = message;
-            tray.ShowBalloonTip(3500, "Hex Chat", message, ToolTipIcon.Info);
-        }
-
-        void Ready()
-        {
-            string engine = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hex.exe");
-            if (!File.Exists(engine)) throw new FileNotFoundException("Place HexChat.exe à côté du hex.exe de ce fork.");
-            using (var current = Process.GetCurrentProcess())
-            {
-                bool running = false;
-                foreach (var process in Process.GetProcessesByName("hex"))
-                using (process)
-                {
-                    if (process.SessionId != current.SessionId) continue;
-                    if (!String.Equals(process.MainModule.FileName, engine, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException("Quitte l’autre version de Hex, puis relance HexChat.exe.");
-                    running = true;
-                }
-                if (!running) Process.Start(new ProcessStartInfo(engine, "app") { UseShellExecute = false });
-            }
-            Notice("Double Ctrl pour Twitch. Ctrl + Espace pour la dictée normale.");
         }
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == HostExited) { Application.ExitThread(); return; }
+            if (m.Msg == ShowMenu) { menu.Show(Cursor.Position); return; }
             if (m.Msg == 0x0312 && m.WParam.ToInt32() == 1) { Bind(); return; }
             if (m.Msg == ActivateTarget || m.Msg == CheckTarget)
             {
@@ -146,28 +124,48 @@ namespace HexChat
             if (disposing)
             {
                 if (IsHandleCreated) UnregisterHotKey(Handle, 1);
-                if (tray != null) tray.Dispose();
                 if (menu != null) menu.Dispose();
             }
             base.Dispose(disposing);
         }
         [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
         [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr window, int id);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr first, IntPtr second);
 
         [STAThread]
         static void Main(string[] args)
         {
-            bool first;
-            using (var single = new Mutex(true, @"Local\HexChat.Dictation", out first))
+            string engine = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hex.exe");
+            if (args.Length == 0 || (args.Length == 1 && args[0] == "--pin-only"))
             {
-                if (!first) { MessageBox.Show("Hex Chat est déjà ouvert dans la zone de notification.", "Hex Chat"); return; }
-                Application.EnableVisualStyles();
                 try
                 {
-                    using (var app = new ChatApp(Array.IndexOf(args, "--pin-only") >= 0)) { app.Ready(); Application.Run(); }
+                    var launch = new ProcessStartInfo(engine, "app") { UseShellExecute = false };
+                    if (args.Length != 0) launch.EnvironmentVariables["HEX_CHAT_PIN_ONLY"] = "1";
+                    using (Process.Start(launch)) { }
                 }
                 catch (Exception e) { MessageBox.Show(e.Message, "Hex Chat", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                return;
             }
+            int pid;
+            if (args.Length != 2 || args[0] != "--host" || !Int32.TryParse(args[1], out pid)) return;
+            try
+            {
+                using (var host = Process.GetProcessById(pid))
+                {
+                    if (!String.Equals(host.MainModule.FileName, engine, StringComparison.OrdinalIgnoreCase)) return;
+                    Application.EnableVisualStyles();
+                    using (var app = new ChatApp(Environment.GetEnvironmentVariable("HEX_CHAT_PIN_ONLY") == "1"))
+                    {
+                        var handle = app.Handle;
+                        host.Exited += delegate { PostMessage(handle, HostExited, IntPtr.Zero, IntPtr.Zero); };
+                        host.EnableRaisingEvents = true;
+                        if (!host.HasExited) Application.Run();
+                    }
+                }
+            }
+            catch (ArgumentException) { /* Hex exited before its helper opened. */ }
+            catch (InvalidOperationException) { /* The host has already closed. */ }
         }
     }
 }

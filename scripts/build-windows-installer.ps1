@@ -23,6 +23,7 @@
 param(
     [Parameter(Mandatory)] [string]$Executable,
     [string]$Console,
+    [string]$ChatPicker,
     [Parameter(Mandatory)] [string]$Version,
     [Parameter(Mandatory)] [ValidateSet('x86_64', 'aarch64')] [string]$Arch,
     [Parameter(Mandatory)] [string]$OutDir,
@@ -145,6 +146,7 @@ function Get-IsccVersion {
 }
 
 $defines = @('/Qp', "/DAppVersion=$Version", "/DArch=$label", "/DExecutable=$Executable") + $consoleDefine
+if ($ChatPicker) { $defines += "/DChatPicker=$((Resolve-Path -LiteralPath $ChatPicker).Path)" }
 
 if ($engineSigning) {
     $found = Get-IsccVersion

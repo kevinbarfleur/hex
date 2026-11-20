@@ -9,7 +9,7 @@ use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId,
-    SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_APP,
+    PostMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_APP,
 };
 
 use super::paste::CaptureWindow;
@@ -34,24 +34,57 @@ impl Destination {
     }
 }
 
+fn picker_path() -> Option<&'static std::path::Path> {
+    static PATH: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+    PATH.get_or_init(|| Some(std::env::current_exe().ok()?.with_file_name("HexChat.exe")))
+        .as_deref()
+}
+
+pub(super) fn installed() -> bool {
+    picker_path().is_some_and(std::path::Path::is_file)
+}
+
+pub(super) fn start_picker() {
+    if let Some(path) = picker_path().filter(|path| path.is_file())
+        && let Err(error) = std::process::Command::new(path)
+            .arg("--host")
+            .arg(std::process::id().to_string())
+            .spawn()
+    {
+        tracing::warn!(%error, "could not start Twitch targeting");
+    }
+}
+
+fn picker_window() -> Option<HWND> {
+    let picker = unsafe { FindWindowW(ptr::null(), windows_sys::w!("HexChat.Picker.v1")) };
+    if picker.is_null() {
+        return None;
+    }
+    let expected = picker_path()?;
+    let actual = super::input::window_process_path(picker)?;
+    if !actual
+        .as_os_str()
+        .eq_ignore_ascii_case(expected.as_os_str())
+    {
+        return None;
+    }
+    Some(picker)
+}
+
+pub(super) fn show_menu() {
+    if let Some(picker) = picker_window() {
+        unsafe {
+            let mut pid = 0;
+            GetWindowThreadProcessId(picker, &mut pid);
+            AllowSetForegroundWindow(pid);
+            PostMessageW(picker, WM_APP + 53, 0, 0);
+        }
+    }
+}
+
 impl Chat {
     fn activate() -> Option<Self> {
-        // A hidden top-level window belonging to the companion beside this binary.
-        let picker = unsafe { FindWindowW(ptr::null(), windows_sys::w!("HexChat.Picker.v1")) };
-        if picker.is_null() {
-            return None;
-        }
-        static PATH: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
-        let expected = PATH
-            .get_or_init(|| Some(std::env::current_exe().ok()?.with_file_name("HexChat.exe")))
-            .as_ref()?;
-        let actual = super::input::window_process_path(picker)?;
-        if !actual
-            .as_os_str()
-            .eq_ignore_ascii_case(expected.as_os_str())
-        {
-            return None;
-        }
+        let picker = picker_window()?;
         let (origin, expires) = unsafe {
             let mut pid = 0;
             GetWindowThreadProcessId(picker, &mut pid);

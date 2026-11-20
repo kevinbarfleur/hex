@@ -174,7 +174,7 @@ def main():
             time.sleep(.03)
         double_control()
 
-    env = dict(os.environ, HEX_APPLICATION_SUPPORT_DIR=str(args.profile.resolve()),
+    env = dict(os.environ, HEX_APPLICATION_SUPPORT_DIR=str(args.profile.resolve()), HEX_CHAT_PIN_ONLY="1",
                HEX_AUDIO_FIXTURE=str(args.wav.resolve()))
     assert args.wav.is_file() and (args.profile / "models").is_dir()
     settings = json.loads((args.profile / "settings.json").read_text(encoding="utf8"))
@@ -183,10 +183,9 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", 0), Fixture)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     engine = subprocess.Popen([args.app.with_name("hex.exe"), "app", "--hidden"], env=env)
-    helper = browser = chat = None
+    browser = chat = None
     try:
         wait(lambda: (args.profile / "local-api.json").exists(), "Hex API unavailable", 30)
-        helper = subprocess.Popen([args.app, "--pin-only"], env=env)
         wait(lambda: user.FindWindowW(None, "HexChat.Picker.v1"), "Picker unavailable")
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as browser_profile:
             browser = subprocess.Popen([args.browser, "--user-data-dir=" + browser_profile,
@@ -236,8 +235,6 @@ def main():
             user.PostMessageW(chat, 0x10, 0, 0)
         if browser and browser.poll() is None:
             browser.terminate()
-        if helper:
-            helper.terminate()
         if engine.poll() is None:
             subprocess.run([args.app.with_name("hex.exe"), "quit"], env=env, timeout=10, capture_output=True)
             try:

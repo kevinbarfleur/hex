@@ -46,10 +46,16 @@ AppId={{6ED48C92-5177-41F4-B8D6-37B7B02CFDF4}
 AppName=Hex
 AppVersion={#AppVersion}
 AppVerName=Hex {#AppVersion}
+#ifdef ChatPicker
+AppPublisher=kevinbarfleur (Hex fork)
+AppPublisherURL=https://github.com/kevinbarfleur/hex
+AppSupportURL=https://github.com/kevinbarfleur/hex/tree/codex/windows-twitch-chat
+#else
 AppPublisher=Anomaly Innovations, Inc.
 AppPublisherURL=https://anoma.ly/
 AppSupportURL=https://github.com/anomalyco/hex/issues
 AppUpdatesURL=https://github.com/anomalyco/hex/releases
+#endif
 PrivilegesRequired=lowest
 ArchitecturesAllowed={#AllowedArchitectures}
 ArchitecturesInstallIn64BitMode={#AllowedArchitectures}
@@ -88,6 +94,11 @@ SignedUninstallerDir="{#SignedEngineDir}"
 
 [Files]
 Source: "{#Executable}"; DestDir: "{app}\versions\{#AppVersion}"; DestName: "hex.exe"; Flags: ignoreversion
+#ifdef ChatPicker
+Source: "{#ChatPicker}"; DestDir: "{app}\versions\{#AppVersion}"; DestName: "HexChat.exe"; Flags: ignoreversion
+Source: "..\..\LICENSE"; DestDir: "{app}\versions\{#AppVersion}"; Flags: ignoreversion
+Source: "..\..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\versions\{#AppVersion}"; Flags: ignoreversion
+#endif
 #ifdef Console
 Source: "{#Console}"; DestDir: "{app}\versions\{#AppVersion}"; DestName: "hex.com"; Flags: ignoreversion
 Source: "{#Console}"; DestDir: "{app}\bin"; DestName: "hex.com"; Flags: ignoreversion
