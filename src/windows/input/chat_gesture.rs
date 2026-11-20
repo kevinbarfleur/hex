@@ -1,38 +1,58 @@
-//! Two short, unchorded presses of the same Control key toggle chat dictation.
+//! A pair of bare Ctrl taps starts a chat capture. Its next bare tap finishes it.
 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_CONTROL, VK_LCONTROL, VK_RCONTROL};
 
 #[derive(Default)]
-pub(super) struct DoubleControl {
+pub(super) struct ControlTaps {
     down: Option<(u32, u32)>,
-    first: Option<(u32, u32)>,
+    previous: Option<(u32, u32)>,
 }
 
-impl DoubleControl {
-    pub(super) fn event(&mut self, key: u32, down: bool, time: u32, other_modifier: bool) -> bool {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ControlTap {
+    consecutive: bool,
+}
+
+impl ControlTap {
+    // The listener consumes taps in order, even while the chat lookup is busy.
+    // A tap that finishes one capture cannot start the next pair.
+    pub(crate) fn triggers(self, armed: &mut bool, recording: bool, chat_owned: bool) -> bool {
+        let starts = !recording && *armed && self.consecutive;
+        *armed = !recording && !starts;
+        starts || (recording && chat_owned)
+    }
+}
+
+impl ControlTaps {
+    pub(super) fn event(
+        &mut self,
+        key: u32,
+        down: bool,
+        time: u32,
+        other_modifier: bool,
+    ) -> Option<ControlTap> {
         const MAX_MS: u32 = 350;
         if other_modifier || !matches!(key as u16, VK_CONTROL | VK_LCONTROL | VK_RCONTROL) {
             *self = Self::default();
-            return false;
+            return None;
         }
         if down {
             self.down.get_or_insert((key, time));
-            return false;
+            return None;
         }
-        let press = self.down.take();
-        if !press.is_some_and(|(vk, at)| vk == key && time.wrapping_sub(at) <= MAX_MS) {
-            self.first = None;
-            return false;
-        }
-        if self
-            .first
+        if !self
+            .down
             .take()
             .is_some_and(|(vk, at)| vk == key && time.wrapping_sub(at) <= MAX_MS)
         {
-            return true;
+            self.previous = None;
+            return None;
         }
-        self.first = Some((key, time));
-        false
+        let consecutive = self
+            .previous
+            .replace((key, time))
+            .is_some_and(|(vk, at)| vk == key && time.wrapping_sub(at) <= MAX_MS);
+        Some(ControlTap { consecutive })
     }
 }
 
@@ -41,49 +61,54 @@ mod tests {
     use super::*;
     const CTRL: u32 = VK_LCONTROL as u32;
 
-    #[test]
-    fn fires_only_on_second_release_and_ignores_repeats() {
-        let mut gesture = DoubleControl::default();
-        for (down, time) in [(true, 10), (true, 30), (false, 50), (true, 110)] {
-            assert!(!gesture.event(CTRL, down, time, false));
-        }
-        assert!(gesture.event(CTRL, false, 140, false));
-        assert!(!gesture.event(CTRL, false, 145, false));
+    fn tap(keys: &mut ControlTaps, key: u32, at: u32) -> ControlTap {
+        assert!(keys.event(key, true, at, false).is_none());
+        keys.event(key, false, at + 25, false).unwrap()
     }
 
     #[test]
-    fn ordinary_dictation_and_other_control_chords_never_count_as_taps() {
-        for key in [0x20, 0x43, 0x56, 0x01] {
-            let mut gesture = DoubleControl::default();
-            for (vk, down, time) in [
-                (CTRL, true, 10),
-                (key, true, 30),
-                (key, false, 40),
-                (CTRL, false, 50),
-                (CTRL, true, 100),
-                (CTRL, false, 120),
+    fn double_to_start_single_to_finish_and_a_fresh_pair_to_restart() {
+        let mut keys = ControlTaps::default();
+        let mut armed = false;
+        assert!(!tap(&mut keys, CTRL, 0).triggers(&mut armed, false, false));
+        assert!(tap(&mut keys, CTRL, 100).triggers(&mut armed, false, false));
+        assert!(tap(&mut keys, CTRL, 180).triggers(&mut armed, true, true));
+        assert!(!tap(&mut keys, CTRL, 240).triggers(&mut armed, false, true));
+        assert!(tap(&mut keys, CTRL, 320).triggers(&mut armed, false, false));
+        assert!(tap(&mut keys, VK_RCONTROL.into(), 5000).triggers(&mut armed, true, true));
+    }
+
+    #[test]
+    fn other_captures_ignore_ctrl_and_slow_or_mixed_pairs_stay_idle() {
+        let mut keys = ControlTaps::default();
+        let mut armed = false;
+        for at in [0, 90] {
+            assert!(!tap(&mut keys, CTRL, at).triggers(&mut armed, true, false));
+        }
+        for (key, at) in [(CTRL, 150), (CTRL, 900), (VK_RCONTROL.into(), 970)] {
+            assert!(!tap(&mut keys, key, at).triggers(&mut armed, false, false));
+        }
+    }
+
+    #[test]
+    fn chords_repeats_long_holds_and_unmatched_releases_do_not_finish() {
+        for chord in [0x20, 0x43, 0x56, 0x01] {
+            let mut keys = ControlTaps::default();
+            for (key, down, at, modified) in [
+                (CTRL, true, 0, false),
+                (chord, true, 30, false),
+                (chord, false, 40, false),
+                (CTRL, false, 50, false),
+                (CTRL, true, 100, true),
+                (CTRL, false, 130, false),
+                (CTRL, true, 200, false),
+                (CTRL, true, 370, false),
+                (CTRL, false, 750, false),
             ] {
-                assert!(!gesture.event(vk, down, time, false));
+                assert!(keys.event(key, down, at, modified).is_none());
             }
-        }
-    }
-
-    #[test]
-    fn rejects_slow_presses_and_other_modifiers() {
-        let mut gesture = DoubleControl::default();
-        for (down, at, other) in [
-            (true, 0, false),
-            (false, 500, false),
-            (true, 520, false),
-            (false, 530, false),
-            (true, 600, true),
-            (false, 625, false),
-            (true, 1200, false),
-            (false, 1210, false),
-            (true, 1700, false),
-            (false, 1710, false),
-        ] {
-            assert!(!gesture.event(CTRL, down, at, other));
+            assert!(!tap(&mut keys, CTRL, 800).consecutive);
+            assert!(keys.event(CTRL, false, 845, false).is_none());
         }
     }
 }

@@ -202,7 +202,7 @@ const DOUBLE_TAP_WINDOW_MS: u32 = crate::dictation::DOUBLE_TAP_WINDOW.as_millis(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HotkeyAction {
     Start,
-    ToggleChat,
+    ChatTap(chat_gesture::ControlTap),
     Finish,
     Cancel,
     PasteLast,
@@ -280,7 +280,7 @@ struct CallbackState {
     /// a binding with a key has always seen (`ModifierState::holds`).
     raw_modifiers: ModifierState,
     side_down: SideDownTimes,
-    chat_gesture: chat_gesture::DoubleControl,
+    chat_gesture: chat_gesture::ControlTaps,
     trigger_down: bool,
     paste_trigger_down: bool,
     double_tap_enabled: bool,
@@ -1015,8 +1015,8 @@ fn process_button(
                 || m.left_windows
                 || m.right_windows
                 || (m.left_control && m.right_control);
-            if state.chat_gesture.event(vk, is_down, time, chord) {
-                send_event(state, HotkeyAction::ToggleChat, time);
+            if let Some(tap) = state.chat_gesture.event(vk, is_down, time, chord) {
+                send_event(state, HotkeyAction::ChatTap(tap), time);
             }
             if !modifier_event && is_down {
                 state.mask_release = false;

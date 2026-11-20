@@ -61,6 +61,8 @@ def main():
             self.reply(commands.pop(0) if commands else b"", "text/plain")
 
     user = ctypes.windll.user32
+    user.GetPropW.argtypes = (wintypes.HWND, wintypes.LPCWSTR)
+    user.GetPropW.restype = wintypes.HANDLE
     user.GetForegroundWindow.restype = wintypes.HWND
     user.FindWindowW.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR)
     user.FindWindowW.restype = wintypes.HWND
@@ -157,22 +159,22 @@ def main():
         finally:
             keys((0x20, 0x11), False)
 
-    def double_control():
-        for unused in range(2):
-            keys((0xa2,), True)
-            time.sleep(.055)
-            keys((0xa2,), False)
-            time.sleep(.075)
+    def tap_ctrl():
+        keys((0xa2,), True)
+        time.sleep(.055)
+        keys((0xa2,), False)
+        time.sleep(.075)
 
     def dictate_to_chat(expected):
         assert foreground() == source
-        double_control()
+        tap_ctrl()
+        tap_ctrl()
         wait(lambda: foreground() == expected, "Wrong double-Control destination", 2)
         end = time.monotonic() + 3
         while time.monotonic() < end:
             game.update()
             time.sleep(.03)
-        double_control()
+        tap_ctrl()
 
     env = dict(os.environ, HEX_APPLICATION_SUPPORT_DIR=str(args.profile.resolve()), HEX_CHAT_PIN_ONLY="1",
                HEX_AUDIO_FIXTURE=str(args.wav.resolve()))
@@ -186,7 +188,8 @@ def main():
     browser = chat = None
     try:
         wait(lambda: (args.profile / "local-api.json").exists(), "Hex API unavailable", 30)
-        wait(lambda: user.FindWindowW(None, "HexChat.Picker.v1"), "Picker unavailable")
+        picker = wait(lambda: user.FindWindowW(None, "HexChat.Picker.v1"), "Picker unavailable")
+        wait(lambda: user.GetPropW(picker, "HexChat.Options") == 3, "Picker settings unavailable")
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as browser_profile:
             browser = subprocess.Popen([args.browser, "--user-data-dir=" + browser_profile,
                                        "--no-first-run", "--no-default-browser-check", "--force-renderer-accessibility",
@@ -198,7 +201,7 @@ def main():
             wait(lambda: state.get("focus") == "d", "Test editor unavailable")
             keys((0x11, 0x12, 0x77), True)
             keys((0x77, 0x12, 0x11), False)
-            time.sleep(1)
+            wait(lambda: user.GetPropW(picker, "HexChat.Selection") == 3, "Chat field was not selected")
             commands.append(b"other")
             wait(lambda: state["focus"] == "q", "Could not focus second field")
             activate(source)
@@ -229,7 +232,7 @@ def main():
             wait(lambda: field.get().strip(), "No double-Control fallback after closing chat", 40)
             assert foreground() == source
             time.sleep(.8)  # Let Hex restore the previous clipboard before shutdown.
-            print("Passed: ordinary Ctrl+Space, double-Control chat draft, retained focus, no Enter, double-Control fallback.")
+            print("Passed: ordinary Ctrl+Space, double Ctrl to start and one Ctrl to paste in chat and fallback, retained focus, no Enter.")
     finally:
         if chat:
             user.PostMessageW(chat, 0x10, 0, 0)

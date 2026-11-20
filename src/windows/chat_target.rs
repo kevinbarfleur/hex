@@ -4,12 +4,13 @@
 
 use std::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AllowSetForegroundWindow, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId,
-    PostMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_APP,
+    AllowSetForegroundWindow, FindWindowW, GetForegroundWindow, GetPropW, GetWindowThreadProcessId,
+    PostMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, SetPropW, WM_APP,
 };
 
 use super::paste::CaptureWindow;
@@ -40,44 +41,83 @@ fn picker_path() -> Option<&'static std::path::Path> {
         .as_deref()
 }
 
-pub(super) fn installed() -> bool {
+static PICKER_PID: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) fn installed() -> bool {
     picker_path().is_some_and(std::path::Path::is_file)
 }
 
 pub(super) fn start_picker() {
-    if let Some(path) = picker_path().filter(|path| path.is_file())
-        && let Err(error) = std::process::Command::new(path)
-            .arg("--host")
-            .arg(std::process::id().to_string())
-            .spawn()
+    let Some(path) = picker_path().filter(|path| path.is_file()) else {
+        return;
+    };
+    match std::process::Command::new(path)
+        .arg("--host")
+        .arg(std::process::id().to_string())
+        .spawn()
     {
-        tracing::warn!(%error, "could not start Twitch targeting");
+        Ok(child) => PICKER_PID.store(child.id(), Ordering::Release),
+        Err(error) => tracing::warn!(%error, "could not start Twitch targeting"),
     }
 }
 
 fn picker_window() -> Option<HWND> {
-    let picker = unsafe { FindWindowW(ptr::null(), windows_sys::w!("HexChat.Picker.v1")) };
-    if picker.is_null() {
+    let expected = PICKER_PID.load(Ordering::Acquire);
+    if expected == 0 {
         return None;
     }
-    let expected = picker_path()?;
-    let actual = super::input::window_process_path(picker)?;
-    if !actual
-        .as_os_str()
-        .eq_ignore_ascii_case(expected.as_os_str())
-    {
-        return None;
+    unsafe {
+        let hwnd = FindWindowW(ptr::null(), windows_sys::w!("HexChat.Picker.v1"));
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        (pid == expected).then_some(hwnd)
     }
-    Some(picker)
 }
 
-pub(super) fn show_menu() {
-    if let Some(picker) = picker_window() {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum Selection {
+    #[default]
+    Unavailable,
+    Automatic,
+    Selecting,
+    Field,
+    Window,
+    Failed,
+    HotkeyUnavailable,
+    Unbound,
+}
+
+// Window properties carry small integers only. Reading them does not block
+// the runtime or the settings window while UI Automation focuses a browser.
+pub(super) fn sync_settings(settings: &crate::app_settings::AppSettings) -> Selection {
+    let Some(hwnd) = picker_window() else {
+        return Selection::Unavailable;
+    };
+    let flags = 1
+        | ((settings.twitch_chat_enabled as usize) << 1)
+        | ((settings.twitch_window_only as usize) << 2);
+    unsafe {
+        let options = windows_sys::w!("HexChat.Options");
+        if GetPropW(hwnd, options) as usize != flags {
+            SetPropW(hwnd, options, flags as _);
+        }
+        match GetPropW(hwnd, windows_sys::w!("HexChat.Selection")) as usize {
+            1 => Selection::Automatic,
+            2 => Selection::Selecting,
+            3 => Selection::Field,
+            4 => Selection::Window,
+            5 => Selection::Failed,
+            6 => Selection::HotkeyUnavailable,
+            7 => Selection::Unbound,
+            _ => Selection::Unavailable,
+        }
+    }
+}
+
+pub(crate) fn reset_selection() {
+    if let Some(hwnd) = picker_window() {
         unsafe {
-            let mut pid = 0;
-            GetWindowThreadProcessId(picker, &mut pid);
-            AllowSetForegroundWindow(pid);
-            PostMessageW(picker, WM_APP + 53, 0, 0);
+            PostMessageW(hwnd, WM_APP + 55, 0, 0);
         }
     }
 }

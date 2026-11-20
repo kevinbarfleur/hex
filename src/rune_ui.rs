@@ -1492,6 +1492,13 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     changed |= onboarding::poll(ui);
     changed |= onboarding_kit::live::poll(ui, tx);
     changed |= general::poll_level(ui, clock, tx);
+    #[cfg(windows)]
+    if let Some(snapshot) = crate::windows::rune::runtime().and_then(|runtime| runtime.published())
+        && snapshot.twitch_selection != ui.platform.twitch_selection
+    {
+        ui.platform.twitch_selection = snapshot.twitch_selection;
+        changed = true;
+    }
     let visible = ui.window.as_ref().is_none_or(rune::AppHandle::is_visible);
     changed |= explainer::poll(ui, clock, visible, tx);
     changed |= sound_sets::poll(ui, clock, visible, tx);

@@ -74,7 +74,7 @@ The other capabilities stay here until they need their own verification recipe.
 
 ## Get Ready
 
-The [Windows Twitch fork](../../native/windows-chat/README.md) installs through the per-user Hex setup. Starting or quitting Hex also starts or quits its chat picker, including at login. Its settings are under Twitch in the Hex tray menu.
+The [Windows Twitch fork](../../native/windows-chat/README.md) installs through the per-user Hex setup. Starting or quitting Hex also starts or quits its chat picker, including at login. General settings contains a Twitch section for targeting, selecting windows or fields, and restoring automatic detection. Double Ctrl starts a dictation and one bare Ctrl finishes it, including when the chat is unavailable.
 
 Install the signed macOS app with `brew install --cask anomalyco/tap/hex` or the
 [manual DMG](../../README.md#downloads). The cask uses a versioned, checksum-pinned

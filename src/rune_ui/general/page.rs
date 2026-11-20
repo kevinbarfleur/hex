@@ -13,9 +13,12 @@ pub(in crate::rune_ui) fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
     if !ui.records_shortcuts() {
         content = content.child(s::desktop_commands(ui, p));
     }
-    content = content
-        .children(basics(ui, p, layer))
-        .child(advanced_toggle(ui, p, Pane::General));
+    content = content.children(basics(ui, p, layer));
+    #[cfg(windows)]
+    if crate::windows::chat_target::installed() {
+        content = content.child(super::twitch::section(ui, p));
+    }
+    content = content.child(advanced_toggle(ui, p, Pane::General));
     if advanced_open(ui, Pane::General) {
         for (key, title, rows) in [
             ("more-dictation", tr("Dictation"), dictation(ui, p, layer)),

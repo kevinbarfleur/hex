@@ -104,6 +104,7 @@ pub(crate) enum ShortcutTarget {
 /// What the runtime last published for the window.
 #[derive(Clone, PartialEq)]
 pub(crate) struct Published {
+    pub(crate) twitch_selection: super::chat_target::Selection,
     /// What the listener last reported doing, from the event log.
     pub(crate) activity: Option<crate::desktop::events::VoiceState>,
     pub(crate) listener: DesktopListenerSnapshot,
@@ -447,7 +448,7 @@ fn run_runtime(
             let view = tray_view_for(&published, dictation_audio);
             if tray_view.as_ref() != Some(&view) {
                 tray.set_tooltip(view.tooltip());
-                tray.set_menu(windows_menu(&view));
+                tray.set_menu(view.menu());
                 tray_view = Some(view);
             }
         }
@@ -904,14 +905,6 @@ fn taskbar_is_light() -> bool {
         .is_ok_and(|light| light != 0)
 }
 
-fn windows_menu(view: &TrayView) -> Vec<rune::TrayItem> {
-    let mut items = view.menu();
-    if super::chat_target::installed() {
-        items.insert(1, rune::TrayItem::action("twitch-chat", "Twitch…"));
-    }
-    items
-}
-
 fn create_tray(window: rune::AppHandle<Ui>) -> Result<rune::Tray> {
     let icon = rune::TrayIcon::rgba(
         tray_icon::SIZE,
@@ -921,11 +914,10 @@ fn create_tray(window: rune::AppHandle<Ui>) -> Result<rune::Tray> {
     let view = TrayView::default();
     let spec = rune::TraySpec::new("hex", "Hex", icon)
         .tooltip(view.tooltip())
-        .menu(windows_menu(&view));
+        .menu(view.menu());
     let tray = rune::Tray::new(spec, move |event| match event {
         // Left click shows the window; right click opens the menu.
         rune::TrayEvent::Activate { .. } => window.open(),
-        rune::TrayEvent::Menu(id) if id == "twitch-chat" => super::chat_target::show_menu(),
         rune::TrayEvent::Menu(id) => match TrayCommand::from_id(&id) {
             Some(TrayCommand::Show) => window.open(),
             Some(TrayCommand::Quit) => window.quit(),

@@ -806,6 +806,7 @@ impl WindowsDesktopHost {
     pub(crate) fn publish(&self) -> Published {
         let preparation = self.preparation.status();
         Published {
+            twitch_selection: super::chat_target::sync_settings(&self.settings),
             activity: self.activity.state,
             listener: DesktopListenerSnapshot {
                 running: self.is_running(),

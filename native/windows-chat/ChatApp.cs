@@ -12,55 +12,47 @@ namespace HexChat
     // remembers the user's selection and answers two bounded focus queries.
     internal sealed class ChatApp : Form
     {
-        const int ActivateTarget = 0x8000 + 51, CheckTarget = 0x8000 + 52, ShowMenu = 0x8000 + 53;
-        const int HostExited = 0x8000 + 54;
-        readonly ContextMenuStrip menu;
-        readonly ToolStripMenuItem status, windowOnly;
+        const int ActivateTarget = 0x8000 + 51, CheckTarget = 0x8000 + 52;
+        const int HostExited = 0x8000 + 54, ResetSelection = 0x8000 + 55;
+        // Shared with windows/chat_target.rs. These window properties contain integers only.
+        enum Selection { Automatic = 1, Selecting, Field, Window, Failed, HotkeyUnavailable, Unbound }
+        readonly bool pinOnly, canBind;
+        int revision;
         FocusTarget target;
         readonly Dictionary<int, FocusTarget> captures = new Dictionary<int, FocusTarget>();
         readonly Queue<int> recent = new Queue<int>();
         bool selecting, pinned;
         Task probe;
-        const string HelpText = "Appuie deux fois sur Ctrl pour dicter dans Twitch, puis deux fois pour terminer. " +
-            "Ctrl + Espace dicte toujours dans l’application active. Si le chat est introuvable, le double Ctrl dicte " +
-            "dans l’application active. Pour choisir un champ précis, clique dedans et appuie sur Ctrl + Alt + F8.";
-
         ChatApp(bool pinOnly)
         {
-            pinned = pinOnly;
+            this.pinOnly = pinOnly;
             Text = "HexChat.Picker.v1";
             ShowInTaskbar = false;
-            menu = new ContextMenuStrip();
-            status = new ToolStripMenuItem(pinOnly ? "Aucun champ mémorisé" : "Détection automatique de Twitch") { Enabled = false };
-            menu.Items.Add(status);
-            menu.Items.Add("Aide", null, delegate { MessageBox.Show(HelpText, "Hex Chat"); });
-            windowOnly = new ToolStripMenuItem("Mémoriser uniquement la fenêtre") { CheckOnClick = true };
-            menu.Items.Add(windowOnly);
-            menu.Items.Add("Détection automatique de Twitch", null, delegate {
-                Forget(); pinned = false; Notice("Détection automatique de Twitch.");
-            });
-            menu.Items.Add("Désactiver le ciblage", null, delegate {
-                Forget(); pinned = true; Notice("Ciblage désactivé.");
-            });
-            if (!RegisterHotKey(Handle, 1, 0x4003, (uint)Keys.F8))
-                Notice("Ctrl + Alt + F8 est déjà utilisé. La détection automatique reste disponible.");
+            canBind = RegisterHotKey(Handle, 1, 0x4003, (uint)Keys.F8);
+            Reset();
         }
 
-        void Notice(string message)
+        void Report(Selection selection) { SetProp(Handle, "HexChat.Selection", new IntPtr((int)selection)); }
+        int Options { get { return GetProp(Handle, "HexChat.Options").ToInt32(); } }
+
+        void Reset()
         {
-            status.Text = message;
+            revision++;
+            Forget();
+            pinned = pinOnly;
+            Report(!canBind ? Selection.HotkeyUnavailable : pinned ? Selection.Unbound : Selection.Automatic);
         }
 
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == HostExited) { Application.ExitThread(); return; }
-            if (m.Msg == ShowMenu) { menu.Show(Cursor.Position); return; }
+            if (m.Msg == ResetSelection) { Reset(); return; }
             if (m.Msg == 0x0312 && m.WParam.ToInt32() == 1) { Bind(); return; }
             if (m.Msg == ActivateTarget || m.Msg == CheckTarget)
             {
                 var chosen = target;
                 m.Result = IntPtr.Zero;
-                if (selecting || (probe != null && !probe.IsCompleted)) return;
+                if ((Options & 2) == 0 || selecting || (probe != null && !probe.IsCompleted)) return;
                 try
                 {
                     if (m.Msg == ActivateTarget)
@@ -101,18 +93,23 @@ namespace HexChat
 
         async void Bind()
         {
-            if (selecting) return;
+            int options = Options;
+            if (selecting || (options & 2) == 0) return;
             selecting = true;
+            int attempt = ++revision;
             Forget();
             pinned = true;
+            Report(Selection.Selecting);
             var window = FocusTarget.Foreground();
-            bool onlyWindow = windowOnly.Checked;
+            bool onlyWindow = (options & 4) != 0;
             try
             {
-                target = await Task.Run(() => FocusTarget.Bind(window, onlyWindow));
-                Notice(onlyWindow ? "Fenêtre mémorisée." : "Champ mémorisé.");
+                var found = await Task.Run(() => FocusTarget.Bind(window, onlyWindow));
+                if (attempt != revision) return;
+                target = found;
+                Report(onlyWindow ? Selection.Window : Selection.Field);
             }
-            catch (Exception) { Notice("Aucun champ mémorisé. Clique dans le chat et refais Ctrl + Alt + F8."); }
+            catch (Exception) { if (attempt == revision) Report(Selection.Failed); }
             finally { selecting = false; }
         }
 
@@ -124,10 +121,17 @@ namespace HexChat
             if (disposing)
             {
                 if (IsHandleCreated) UnregisterHotKey(Handle, 1);
-                if (menu != null) menu.Dispose();
+                if (IsHandleCreated)
+                {
+                    RemoveProp(Handle, "HexChat.Selection");
+                    RemoveProp(Handle, "HexChat.Options");
+                }
             }
             base.Dispose(disposing);
         }
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetProp(IntPtr window, string name);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SetProp(IntPtr window, string name, IntPtr value);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr RemoveProp(IntPtr window, string name);
         [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
         [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr window, int id);
         [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr first, IntPtr second);

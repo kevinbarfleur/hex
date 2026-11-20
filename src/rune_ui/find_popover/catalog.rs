@@ -86,6 +86,10 @@ pub(super) fn entries(ui: &Ui) -> Vec<Entry> {
             tr("Pastes your words as Hex heard them"),
         );
     }
+    #[cfg(windows)]
+    if crate::windows::chat_target::installed() {
+        add(g, "twitch-enabled", false, tr("Target Twitch chat"), "");
+    }
     add(g, "transcription", false, tr("Speech model"), "");
     if crate::transcription::models::definition(ui.settings.transcription.model)
         .language_choices()

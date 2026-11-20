@@ -31,6 +31,8 @@ use crate::transcription::models as transcription_models;
 
 mod page;
 mod shortcuts;
+#[cfg(windows)]
+mod twitch;
 
 /// Labs › More dictation shortcuts (macOS): General's extra shortcut rows.
 #[cfg(target_os = "macos")]

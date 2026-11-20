@@ -281,6 +281,8 @@ pub(super) enum ScrawlRequest {
 /// The OS-only state the panes show; the host keeps it current.
 #[derive(Clone, Debug)]
 pub(super) struct PlatformState {
+    #[cfg(windows)]
+    pub(super) twitch_selection: crate::windows::chat_target::Selection,
     pub(super) caps: Capabilities,
     /// Whether this Linux window is on Wayland (previews are).
     pub(super) wayland: bool,
@@ -399,6 +401,8 @@ impl PlatformState {
     pub(super) fn new(caps: Capabilities) -> Self {
         Self {
             caps,
+            #[cfg(windows)]
+            twitch_selection: Default::default(),
             wayland: wayland_session(),
             input_sources: Vec::new(),
             permissions: crate::desktop::onboarding::status_with_transcription_model(false),

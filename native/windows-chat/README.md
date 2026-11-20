@@ -1,20 +1,20 @@
 # Hex Chat pour Windows
 
-**Deux pressions rapides sur Ctrl** démarrent une dictée pour Twitch depuis le jeu. **Deux nouvelles pressions sur Ctrl** la terminent. La transcription s’insère dans le brouillon, le focus reste dans le chat et tu choisis quand appuyer sur Entrée. **Ctrl + Espace** dicte toujours dans l’application active, même lorsque Twitch est ouvert.
+**Deux pressions rapides sur Ctrl** démarrent une dictée pour Twitch depuis le jeu. **Une seule pression sur Ctrl** la termine. La transcription s’insère dans le brouillon, le focus reste dans le chat et tu choisis quand appuyer sur Entrée. **Ctrl + Espace** dicte toujours dans l’application active, même lorsque Twitch est ouvert.
 
 ## Démarrer
 
 1. Après installation, ouvre **Hex** depuis le menu Démarrer. La version portable se lance avec **hex.exe** dans le dossier des deux exécutables. Au premier démarrage, termine la configuration de Hex, choisis ta langue et attends que le modèle soit prêt.
-2. Laisse l’onglet du chat Twitch visible dans sa propre fenêtre Helium ou Edge. Retourne dans le jeu et appuie deux fois brièvement sur la même touche **Ctrl**, gauche ou droite. Parle, puis refais **double Ctrl** pour insérer le brouillon.
-3. Si le champ est absent, si plusieurs chats sont possibles ou si la fenêtre refuse le focus, ce même double Ctrl lance la dictée dans l’application active. Termine-la aussi avec double Ctrl. Le raccourci ordinaire **Ctrl + Espace** conserve le mode Maintenir ou Bascule choisi dans Hex.
+2. Laisse l’onglet du chat Twitch visible dans sa propre fenêtre Helium ou Edge. Retourne dans le jeu et appuie deux fois brièvement sur la même touche **Ctrl**, gauche ou droite. Parle, puis appuie **une fois sur Ctrl** pour insérer le brouillon.
+3. Si le champ est absent, si plusieurs chats sont possibles ou si la fenêtre refuse le focus, ce même double Ctrl lance la dictée dans l’application active. Un seul appui sur Ctrl la termine aussi. Le raccourci ordinaire **Ctrl + Espace** conserve le mode Maintenir ou Bascule choisi dans Hex.
 
 ## Choisir un chat précis
 
-La détection automatique reconnaît une fenêtre de navigateur dont le titre contient « Twitch », une page Twitch et un champ de message visible. Si le titre ou le libellé est personnalisé, ou si plusieurs chats sont ouverts, clique dans ton champ puis appuie une fois sur **Ctrl + Alt + F8**. Le menu **Twitch…** de l’icône Hex affiche ensuite « Champ mémorisé ».
+La détection automatique reconnaît une fenêtre de navigateur dont le titre contient « Twitch », une page Twitch et un champ de message visible. Si le titre ou le libellé est personnalisé, ou si plusieurs chats sont ouverts, clique dans ton champ puis appuie une fois sur **Ctrl + Alt + F8**. La section **Twitch** des réglages généraux affiche la sélection en cours.
 
-La sélection manuelle reste valable pour la session. Une fenêtre peut être déplacée entre deux écrans. Si la page est rechargée, mémorise de nouveau le champ. Pour cibler uniquement une fenêtre, coche **Mémoriser uniquement la fenêtre** sous **Twitch…** dans le menu de l’icône Hex avant de la sélectionner. **Détection automatique de Twitch** efface la sélection manuelle.
+La sélection manuelle reste valable pour la session. Une fenêtre peut être déplacée entre deux écrans. Si la page est rechargée, mémorise de nouveau le champ. Pour cibler uniquement une fenêtre, coche **Mémoriser uniquement la fenêtre** dans la section **Twitch** avant de la sélectionner. Le bouton de retour à la détection automatique efface la sélection manuelle.
 
-Si la cible disparaît ou perd le focus *après* le début d’une dictée ciblée, Hex conserve le texte dans le presse-papiers. Tu peux alors le coller avec **Ctrl + V**. **Désactiver le ciblage** rend immédiatement les prochaines dictées au fonctionnement ordinaire de Hex.
+Si la cible disparaît ou perd le focus *après* le début d’une dictée ciblée, Hex conserve le texte dans le presse-papiers. Tu peux alors le coller avec **Ctrl + V**. Désactive **Cibler le chat Twitch** dans les réglages pour que le double Ctrl dicte dans l’application active.
 
 Hex doit recevoir le raccourci principal. Si un autre outil de dictée intercepte **Ctrl + Espace**, quitte cet outil ou change son raccourci dans ses paramètres.
 

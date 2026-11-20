@@ -832,6 +832,18 @@ pub(super) const KEYS: &[Key] = &[
         Kind::Bool,
         "Hex's own GNOME custom keyboard shortcuts, for GNOME without a shortcuts portal (Linux)",
     ),
+    #[cfg(windows)]
+    key(
+        "twitch_chat_enabled",
+        Kind::Bool,
+        "Target Twitch when dictation starts with double Ctrl",
+    ),
+    #[cfg(windows)]
+    key(
+        "twitch_window_only",
+        Kind::Bool,
+        "Select only the window when binding a Twitch target",
+    ),
     key(
         "share_dictation_shortcut",
         Kind::Bool,

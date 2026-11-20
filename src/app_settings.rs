@@ -362,6 +362,10 @@ pub struct AppSettings {
     /// Let other apps see the dictation shortcut's key presses too
     /// (Windows), so a push-to-talk key can drive both.
     pub share_dictation_shortcut: bool,
+    #[cfg(windows)]
+    pub twitch_chat_enabled: bool,
+    #[cfg(windows)]
+    pub twitch_window_only: bool,
     /// A mouse-button shortcut went back to its default because Labs ›
     /// Mouse shortcuts is off; the window says so once, then clears it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -493,6 +497,10 @@ impl Default for AppSettings {
             paste_with_shift: false,
             gnome_keyboard_shortcuts: false,
             share_dictation_shortcut: false,
+            #[cfg(windows)]
+            twitch_chat_enabled: true,
+            #[cfg(windows)]
+            twitch_window_only: false,
             mouse_shortcut_notice: false,
             ui_language: None,
             indicator_position: IndicatorPosition::default(),

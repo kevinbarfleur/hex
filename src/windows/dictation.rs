@@ -362,6 +362,7 @@ pub fn run(
     let mut recording_flavour = crate::dictation::DictationFlavour::Normal;
     let mut recording_by_shortcut = false;
     let mut recording_by_chat_gesture = false;
+    let mut chat_start_armed = false;
     // The window in front when this capture started, where its paste returns
     // if the desktop or a taskbar is in front instead.
     let mut recording_destination = Default::default();
@@ -683,20 +684,31 @@ pub fn run(
                 &mut print,
             )
         {
-            let chat_gesture = matches!(action, HotkeyAction::ToggleChat);
-            let (action, deliberate, flavour) = if chat_gesture {
-                let action = if recording || start_pending {
-                    if !recording_by_chat_gesture {
+            let (action, deliberate, flavour, chat_gesture) =
+                if let HotkeyAction::ChatTap(tap) = action {
+                    let active = recording || start_pending;
+                    if !tap.triggers(
+                        &mut chat_start_armed,
+                        active || service.is_active(),
+                        active && recording_by_chat_gesture,
+                    ) {
                         continue;
                     }
-                    HotkeyAction::Finish
+                    let action = if active {
+                        HotkeyAction::Finish
+                    } else {
+                        HotkeyAction::Start
+                    };
+                    (
+                        action,
+                        true,
+                        crate::dictation::DictationFlavour::Normal,
+                        true,
+                    )
                 } else {
-                    HotkeyAction::Start
+                    chat_start_armed = false;
+                    (action, deliberate, flavour, false)
                 };
-                (action, true, crate::dictation::DictationFlavour::Normal)
-            } else {
-                (action, deliberate, flavour)
-            };
             // Labs › Stop phrase: only the finish its words ended keeps them;
             // any other action leaves them for that finish.
             let finish_phrase = if matches!(action, HotkeyAction::Finish) {
